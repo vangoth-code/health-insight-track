@@ -94,7 +94,7 @@ export const BloodReportDashboard = () => {
   };
 
   const getCriticalChanges = () => {
-    if (!previousReport) return [];
+    if (!latestReport || !previousReport) return [];
     
     const changes = [];
     Object.entries(latestReport.parameters).forEach(([key, current]) => {
