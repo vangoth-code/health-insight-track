@@ -12,6 +12,7 @@ import { PatientSelector } from "@/components/PatientSelector";
 import { TrendChart } from "@/components/TrendChart";
 import { ComparisonView } from "@/components/ComparisonView";
 import { BloodReportExtractor } from "@/services/BloodReportExtractor";
+import { ManualDataEntry } from "@/components/ManualDataEntry";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ParameterCard } from "@/components/ParameterCard";
 
@@ -414,6 +415,14 @@ export const BloodReportDashboard = () => {
           {/* Upload Tab */}
           <TabsContent value="upload" className="space-y-6">
             <FileUpload onUpload={handleFileUpload} />
+            
+            {/* Manual Data Entry */}
+            <ManualDataEntry onReportCreated={(report) => {
+              console.log('📝 Manual report created:', report);
+              const newReports = [...reports, { ...report, uploadDate: new Date().toISOString().split('T')[0] }];
+              setReports(newReports);
+              setSelectedPatient(report.patientName);
+            }} />
             
             <Card>
               <CardHeader>
