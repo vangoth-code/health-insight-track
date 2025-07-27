@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, Calendar } from "lucide-react";
 
 interface Report {
-  id: number;
+  id: number | string;
   date: string;
   type: string;
   parameters: Record<string, { value: number; unit: string; optimal: string }>;

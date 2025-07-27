@@ -10,9 +10,25 @@ import { ParameterCard } from "./ParameterCard";
 import { TrendChart } from "./TrendChart";
 import { ComparisonView } from "./ComparisonView";
 import { SuggestionsPanel } from "./SuggestionsPanel";
+import { BloodReportExtractor, ExtractedReport } from "@/services/BloodReportExtractor";
+
+interface BloodParameter {
+  value: number;
+  unit: string;
+  optimal: string;
+}
+
+interface BloodReport {
+  id: number | string;
+  date: string;
+  type: string;
+  uploadDate?: string;
+  fileName?: string;
+  parameters: Record<string, BloodParameter>;
+}
 
 // Mock data for demonstration - dates represent actual test/report dates, not upload dates
-const mockReports = [
+const mockReports: BloodReport[] = [
   {
     id: 1,
     date: "2024-01-15", // Actual test date from the blood report
@@ -44,8 +60,9 @@ const mockReports = [
 ];
 
 export const BloodReportDashboard = () => {
-  const [reports] = useState(mockReports);
+  const [reports, setReports] = useState<BloodReport[]>(mockReports);
   const [showUpload, setShowUpload] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
   const latestReport = reports[0];
   const previousReport = reports[1];
@@ -114,21 +131,71 @@ export const BloodReportDashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText size={20} />
-                Upload Blood Report
+                Upload Blood Reports
               </CardTitle>
               <CardDescription>
-                Upload your blood report as PDF or image to track your health parameters
+                Upload your blood reports as PDF or images. The system will automatically extract test dates and parameter values for tracking.
+                <br />
+                <span className="text-xs text-muted-foreground mt-1 block">
+                  ✓ PDF text extraction ✓ Parameter recognition ✓ Date detection ✓ Batch processing
+                </span>
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FileUpload onUpload={(files) => {
+              <FileUpload onUpload={async (files) => {
                 console.log("Uploaded files:", files);
-                toast({
-                  title: "Reports processed",
-                  description: `${files.length} blood report(s) have been successfully processed and added to your health records.`,
-                });
+                setIsProcessing(true);
+                
+                try {
+                  // Extract data from uploaded files
+                  const extractedReports = await BloodReportExtractor.processFiles(files);
+                  
+                  if (extractedReports.length > 0) {
+                    // Convert extracted reports to match our BloodReport interface
+                    const newReports: BloodReport[] = extractedReports.map(report => ({
+                      ...report,
+                      id: report.id,
+                      uploadDate: new Date().toISOString().split('T')[0]
+                    }));
+                    
+                    // Add new reports to existing ones and sort by date
+                    setReports(prevReports => {
+                      const allReports = [...prevReports, ...newReports];
+                      return allReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    });
+                    
+                    toast({
+                      title: "Reports processed successfully",
+                      description: `${extractedReports.length} blood report(s) extracted and added to your health records.`,
+                    });
+                  } else {
+                    toast({
+                      title: "No data extracted",
+                      description: "Unable to extract blood test parameters from the uploaded files. Please ensure the files contain readable blood test results.",
+                      variant: "destructive"
+                    });
+                  }
+                } catch (error) {
+                  console.error("Error processing files:", error);
+                  toast({
+                    title: "Processing failed",
+                    description: "An error occurred while processing your files. Please try again.",
+                    variant: "destructive"
+                  });
+                } finally {
+                  setIsProcessing(false);
+                }
+                
                 setShowUpload(false);
               }} />
+              
+              {isProcessing && (
+                <div className="mt-4 p-4 bg-primary/10 rounded-lg">
+                  <p className="text-sm text-primary font-medium">
+                    Processing uploaded files and extracting blood test parameters...
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

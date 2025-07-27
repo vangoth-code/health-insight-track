@@ -5,7 +5,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 
 interface Report {
-  id: number;
+  id: number | string;
   date: string;
   type: string;
   parameters: Record<string, { value: number; unit: string; optimal: string }>;
