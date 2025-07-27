@@ -96,6 +96,8 @@ export const BloodReportDashboard = () => {
   const previousReport = patientReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[1];
 
   const handleFileUpload = async (files: File[]) => {
+    console.log('🚨 DASHBOARD handleFileUpload CALLED! Files:', files);
+    alert('handleFileUpload called with ' + files.length + ' files'); // Temporary alert to verify
     try {
       console.log('=== handleFileUpload called with files:', files);
       console.log('Number of files:', files.length);
