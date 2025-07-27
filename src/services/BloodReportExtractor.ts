@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse';
+// Simple PDF text extraction for browser environment
 
 export interface BloodParameter {
   value: number;
@@ -206,27 +206,44 @@ export class BloodReportExtractor {
     return parameters;
   }
 
-  // Process PDF file using pdf-parse
+  // Simple PDF text extraction attempt for browser
   static async processPDFFile(file: File): Promise<ExtractedReport | null> {
     try {
-      console.log('🔄 Processing PDF with pdf-parse:', file.name);
+      console.log('🔄 Attempting simple PDF text extraction:', file.name);
       
-      // Convert file to buffer
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      // Try reading as text first (might work for simple PDFs)
+      const text = await file.text();
+      console.log('📝 Raw file text length:', text.length);
+      console.log('📝 First 500 chars:', text.substring(0, 500));
       
-      console.log('📄 File buffer created, size:', buffer.length);
+      let extractedText = '';
       
-      // Parse PDF and extract text
-      console.log('📖 Parsing PDF...');
-      const data = await pdfParse(buffer);
+      // Look for readable text patterns in the raw data
+      const textMatches = text.match(/[A-Za-z0-9\s\.\,\:\;\-\(\)\/]{10,}/g);
+      if (textMatches) {
+        extractedText = textMatches.join(' ');
+        console.log('📝 Extracted readable text length:', extractedText.length);
+        console.log('📝 Extracted text sample:', extractedText.substring(0, 500));
+      }
       
-      const extractedText = data.text;
-      console.log('📝 Extracted text length:', extractedText.length);
-      console.log('📝 First 500 chars:', extractedText.substring(0, 500));
+      // If no readable text found, try alternative approach
+      if (extractedText.length < 50) {
+        console.log('🔍 Trying alternative text extraction...');
+        
+        // Try to extract text between common PDF patterns
+        const alternativeText = text.replace(/[^\x20-\x7E]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        if (alternativeText.length > 50) {
+          extractedText = alternativeText;
+          console.log('📝 Alternative extraction success, length:', extractedText.length);
+        }
+      }
       
-      if (!extractedText || extractedText.length < 50) {
-        console.warn('⚠️ PDF text extraction failed or minimal text found');
+      // If still no text, return fallback
+      if (extractedText.length < 50) {
+        console.warn('⚠️ Could not extract readable text from PDF');
         return this.createFallbackReport(file);
       }
       
@@ -242,8 +259,7 @@ export class BloodReportExtractor {
       console.log('  - Parameters:', parameters);
       
       if (Object.keys(parameters).length === 0) {
-        console.warn('⚠️ No blood parameters found in PDF text');
-        console.log('Full extracted text for debugging:', extractedText);
+        console.warn('⚠️ No blood parameters found in extracted text');
         return this.createFallbackReport(file);
       }
       
@@ -257,7 +273,7 @@ export class BloodReportExtractor {
       };
       
     } catch (error) {
-      console.error('❌ Error processing PDF with pdf-parse:', error);
+      console.error('❌ Error in simple PDF processing:', error);
       return this.createFallbackReport(file);
     }
   }
