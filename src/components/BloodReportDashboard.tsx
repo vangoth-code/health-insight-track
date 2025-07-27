@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, TrendingUp, TrendingDown, AlertTriangle, Activity, FileText, Camera } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { FileUpload } from "./FileUpload";
 import { ParameterCard } from "./ParameterCard";
 import { TrendChart } from "./TrendChart";
@@ -45,6 +46,7 @@ const mockReports = [
 export const BloodReportDashboard = () => {
   const [reports] = useState(mockReports);
   const [showUpload, setShowUpload] = useState(false);
+  const { toast } = useToast();
   const latestReport = reports[0];
   const previousReport = reports[1];
 
@@ -119,8 +121,12 @@ export const BloodReportDashboard = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FileUpload onUpload={(file) => {
-                console.log("Uploaded:", file);
+              <FileUpload onUpload={(files) => {
+                console.log("Uploaded files:", files);
+                toast({
+                  title: "Reports processed",
+                  description: `${files.length} blood report(s) have been successfully processed and added to your health records.`,
+                });
                 setShowUpload(false);
               }} />
             </CardContent>
