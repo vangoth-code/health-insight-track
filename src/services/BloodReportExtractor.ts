@@ -209,21 +209,37 @@ export class BloodReportExtractor {
   // Simple PDF text extraction attempt for browser
   static async processPDFFile(file: File): Promise<ExtractedReport | null> {
     try {
-      console.log('🔄 Attempting simple PDF text extraction:', file.name);
+      console.log('🔄 Starting PDF processing:', file.name);
+      console.log('📄 File size:', file.size, 'bytes');
+      console.log('📄 File type:', file.type);
+      console.log('📄 File last modified:', new Date(file.lastModified));
       
       // Try reading as text first (might work for simple PDFs)
+      console.log('📖 Reading file as text...');
       const text = await file.text();
       console.log('📝 Raw file text length:', text.length);
-      console.log('📝 First 500 chars:', text.substring(0, 500));
+      
+      if (text.length === 0) {
+        console.error('❌ File text is empty!');
+        return this.createFallbackReport(file);
+      }
+      
+      console.log('📝 First 1000 chars of raw text:');
+      console.log(text.substring(0, 1000));
+      console.log('📝 Last 500 chars of raw text:');
+      console.log(text.substring(Math.max(0, text.length - 500)));
       
       let extractedText = '';
       
       // Look for readable text patterns in the raw data
+      console.log('🔍 Searching for readable text patterns...');
       const textMatches = text.match(/[A-Za-z0-9\s\.\,\:\;\-\(\)\/]{10,}/g);
+      console.log('🔍 Found', textMatches ? textMatches.length : 0, 'text matches');
+      
       if (textMatches) {
         extractedText = textMatches.join(' ');
         console.log('📝 Extracted readable text length:', extractedText.length);
-        console.log('📝 Extracted text sample:', extractedText.substring(0, 500));
+        console.log('📝 Extracted text sample (first 1000 chars):', extractedText.substring(0, 1000));
       }
       
       // If no readable text found, try alternative approach
@@ -235,18 +251,24 @@ export class BloodReportExtractor {
           .replace(/\s+/g, ' ')
           .trim();
         
+        console.log('🔍 Alternative text length:', alternativeText.length);
+        console.log('🔍 Alternative text sample:', alternativeText.substring(0, 1000));
+        
         if (alternativeText.length > 50) {
           extractedText = alternativeText;
-          console.log('📝 Alternative extraction success, length:', extractedText.length);
+          console.log('✅ Alternative extraction success');
         }
       }
       
       // If still no text, return fallback
       if (extractedText.length < 50) {
         console.warn('⚠️ Could not extract readable text from PDF');
+        console.log('⚠️ Final extracted text:', extractedText);
+        console.log('⚠️ Returning fallback report');
         return this.createFallbackReport(file);
       }
       
+      console.log('🔍 Analyzing extracted text for blood parameters...');
       const extractedDate = this.extractDate(extractedText);
       const reportType = this.extractReportType(extractedText);
       const patientName = this.extractPatientName(extractedText);
@@ -256,13 +278,18 @@ export class BloodReportExtractor {
       console.log('  - Date:', extractedDate);
       console.log('  - Type:', reportType);
       console.log('  - Patient:', patientName);
+      console.log('  - Parameters found:', Object.keys(parameters).length);
       console.log('  - Parameters:', parameters);
       
       if (Object.keys(parameters).length === 0) {
         console.warn('⚠️ No blood parameters found in extracted text');
+        console.log('⚠️ Full extracted text for parameter debugging:');
+        console.log(extractedText);
+        console.log('⚠️ Returning fallback report due to no parameters');
         return this.createFallbackReport(file);
       }
       
+      console.log('✅ Successfully processed PDF with real data!');
       return {
         id: Math.random().toString(36).substr(2, 9),
         date: extractedDate,
@@ -274,6 +301,7 @@ export class BloodReportExtractor {
       
     } catch (error) {
       console.error('❌ Error in simple PDF processing:', error);
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
       return this.createFallbackReport(file);
     }
   }
