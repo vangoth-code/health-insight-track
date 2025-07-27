@@ -231,38 +231,57 @@ export class BloodReportExtractor {
       
       let pdf: any;
       try {
-        // Try to load PDF with better error handling
+        console.log('📋 Attempting PDF load without worker first...');
+        
+        // Try without worker first
         const loadingTask = pdfjsLib.getDocument({
           data: typedArray,
-          verbosity: 0, // Reduce console spam
-          disableAutoFetch: true,
-          disableStream: true
+          useWorkerFetch: false,
+          isEvalSupported: false,
+          useSystemFonts: true,
+          verbosity: 0
         });
         
-        console.log('📋 Loading task created, waiting for promise...');
+        console.log('📋 Loading task created, setting up handlers...');
         
-        // Add proper error handling for the loading task
-        loadingTask.onPassword = (callback: any, reason: any) => {
-          console.error('❌ PDF is password protected');
-          throw new Error('PDF is password protected');
-        };
+        // Set up a more aggressive timeout
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            console.error('❌ PDF loading timeout after 10 seconds');
+            reject(new Error('PDF loading timeout after 10 seconds'));
+          }, 10000);
+        });
+        
+        console.log('📋 Starting promise race...');
         
         pdf = await Promise.race([
-          loadingTask.promise,
-          new Promise((_, reject) => 
-            setTimeout(() => {
-              console.error('❌ PDF loading timeout after 15 seconds');
-              reject(new Error('PDF loading timeout after 15 seconds'));
-            }, 15000)
-          )
+          loadingTask.promise.then(result => {
+            console.log('✅ PDF promise resolved!', result);
+            return result;
+          }).catch(error => {
+            console.error('❌ PDF promise rejected:', error);
+            throw error;
+          }),
+          timeoutPromise
         ]);
         
         console.log('✅ PDF loaded successfully! Pages:', pdf.numPages);
       } catch (pdfError) {
         console.error('❌ PDF loading failed:', pdfError);
-        console.error('❌ PDF error details:', pdfError instanceof Error ? pdfError.message : pdfError);
-        console.error('❌ PDF error stack:', pdfError instanceof Error ? pdfError.stack : 'No stack');
-        throw pdfError;
+        console.error('❌ Trying fallback approach...');
+        
+        // Try with minimal configuration as fallback
+        try {
+          const fallbackTask = pdfjsLib.getDocument(typedArray);
+          pdf = await Promise.race([
+            fallbackTask.promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Fallback timeout')), 5000))
+          ]);
+          console.log('✅ Fallback PDF load successful! Pages:', pdf.numPages);
+        } catch (fallbackError) {
+          console.error('❌ Fallback also failed:', fallbackError);
+          throw new Error(`PDF loading failed: ${pdfError instanceof Error ? pdfError.message : pdfError}`);
+        }
       }
       
       let extractedText = '';
