@@ -20,6 +20,8 @@ interface PatientSelectorProps {
 }
 
 export const PatientSelector = ({ reports, selectedPatient, onPatientChange }: PatientSelectorProps) => {
+  console.log('PatientSelector rendering with:', { reports, selectedPatient });
+  
   // Get unique patients and their report counts
   const patientStats = reports.reduce((acc, report) => {
     const patientName = report.patientName;
