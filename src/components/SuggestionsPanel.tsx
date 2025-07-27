@@ -27,6 +27,7 @@ interface Report {
   id: number | string;
   date: string;
   type: string;
+  patientName?: string;
   parameters: Record<string, { value: number; unit: string; optimal: string }>;
 }
 

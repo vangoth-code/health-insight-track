@@ -14,6 +14,7 @@ export interface ExtractedReport {
   date: string;
   type: string;
   fileName: string;
+  patientName: string;
   parameters: Record<string, BloodParameter>;
 }
 
@@ -139,6 +140,42 @@ export class BloodReportExtractor {
     return "Blood Test";
   }
 
+  // Extract patient name from text
+  private static extractPatientName(text: string): string {
+    const namePatterns = [
+      /patient[:\s]+([A-Za-z\s,]+)(?:\n|DOB|Date of Birth|MRN|ID|Test)/i,
+      /name[:\s]+([A-Za-z\s,]+)(?:\n|DOB|Date of Birth|MRN|ID|Test)/i,
+      /patient name[:\s]+([A-Za-z\s,]+)(?:\n|DOB|Date of Birth|MRN|ID|Test)/i,
+      /^([A-Za-z]+(?:\s+[A-Za-z]+)+)(?:\s*\n|\s+DOB|\s+Date)/im,
+      /for[:\s]+([A-Za-z\s,]+)(?:\n|DOB|Date of Birth|MRN|ID|Test)/i
+    ];
+
+    for (const pattern of namePatterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        let name = match[1].trim();
+        // Clean up the name - remove common suffixes and format
+        name = name.replace(/[,\n\r]+$/, ''); // Remove trailing commas/newlines
+        name = name.replace(/\s+/g, ' '); // Normalize spaces
+        if (name.length > 2 && name.length < 50) { // Reasonable name length
+          return name;
+        }
+      }
+    }
+
+    // If no name found, try to extract from filename
+    const fileName = text.match(/filename:\s*([^.]+)/i);
+    if (fileName && fileName[1]) {
+      const nameFromFile = fileName[1].replace(/[-_]/g, ' ').trim();
+      if (nameFromFile.length > 2) {
+        return nameFromFile;
+      }
+    }
+
+    // Fallback to "Unknown Patient"
+    return "Unknown Patient";
+  }
+
   // Extract parameters from text using patterns
   private static extractParameters(text: string): Record<string, BloodParameter> {
     const parameters: Record<string, BloodParameter> = {};
@@ -200,8 +237,10 @@ export class BloodReportExtractor {
 
       const extractedDate = this.extractDate(extractedText);
       const reportType = this.extractReportType(extractedText);
+      const patientName = this.extractPatientName(extractedText);
       const parameters = this.extractParameters(extractedText);
 
+      console.log('Extracted patient name:', patientName);
       console.log('Extracted parameters:', parameters);
 
       if (Object.keys(parameters).length === 0) {
@@ -214,6 +253,7 @@ export class BloodReportExtractor {
         date: extractedDate,
         type: reportType,
         fileName: file.name,
+        patientName,
         parameters
       };
     } catch (error) {
@@ -238,6 +278,7 @@ export class BloodReportExtractor {
           date: new Date().toISOString().split('T')[0],
           type: "Blood Test (Image)",
           fileName: file.name,
+          patientName: "Sample Patient", // In real implementation, extract from OCR
           parameters: {
             // Simulated data - in real implementation this would come from OCR
             hemoglobin: { value: 13.5, unit: "g/dL", optimal: "12-15" },

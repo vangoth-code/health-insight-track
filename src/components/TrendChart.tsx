@@ -8,6 +8,7 @@ interface Report {
   id: number | string;
   date: string;
   type: string;
+  patientName?: string;
   parameters: Record<string, { value: number; unit: string; optimal: string }>;
 }
 
@@ -75,13 +76,21 @@ export const TrendChart = ({ reports }: TrendChartProps) => {
     return null;
   };
 
+  if (chartData.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>No trend data available. Upload more reports to see parameter trends.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Parameter Trends</h3>
           <p className="text-sm text-muted-foreground">
-            Track changes in your health parameters over time
+            Track changes in health parameters over time ({chartData.length} data points)
           </p>
         </div>
         <Select value={selectedParameter} onValueChange={setSelectedParameter}>

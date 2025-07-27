@@ -10,6 +10,7 @@ import { ParameterCard } from "./ParameterCard";
 import { TrendChart } from "./TrendChart";
 import { ComparisonView } from "./ComparisonView";
 import { SuggestionsPanel } from "./SuggestionsPanel";
+import { PatientSelector } from "./PatientSelector";
 import { BloodReportExtractor, ExtractedReport } from "@/services/BloodReportExtractor";
 
 interface BloodParameter {
@@ -24,6 +25,7 @@ interface BloodReport {
   type: string;
   uploadDate?: string;
   fileName?: string;
+  patientName: string;
   parameters: Record<string, BloodParameter>;
 }
 
@@ -34,6 +36,7 @@ const mockReports: BloodReport[] = [
     date: "2024-01-15", // Actual test date from the blood report
     type: "Complete Blood Count",
     uploadDate: "2024-01-20", // When the report was uploaded (separate field)
+    patientName: "John Smith",
     parameters: {
       hemoglobin: { value: 13.2, unit: "g/dL", optimal: "12-15" },
       wbc: { value: 7200, unit: "/μL", optimal: "4500-11000" },
@@ -48,6 +51,7 @@ const mockReports: BloodReport[] = [
     date: "2024-01-01", // Actual test date from the blood report
     type: "Complete Blood Count", 
     uploadDate: "2024-01-05", // When the report was uploaded (separate field)
+    patientName: "John Smith",
     parameters: {
       hemoglobin: { value: 12.8, unit: "g/dL", optimal: "12-15" },
       wbc: { value: 6800, unit: "/μL", optimal: "4500-11000" },
@@ -63,9 +67,16 @@ export const BloodReportDashboard = () => {
   const [reports, setReports] = useState<BloodReport[]>(mockReports);
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<string | null>("John Smith"); // Default to first patient
   const { toast } = useToast();
-  const latestReport = reports[0];
-  const previousReport = reports[1];
+  
+  // Filter reports by selected patient
+  const patientReports = selectedPatient 
+    ? reports.filter(report => report.patientName === selectedPatient)
+    : [];
+    
+  const latestReport = patientReports[0];
+  const previousReport = patientReports[1];
 
   const getParameterStatus = (value: number, optimal: string) => {
     // Simple logic for demonstration
@@ -164,6 +175,12 @@ export const BloodReportDashboard = () => {
                       return allReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                     });
                     
+                    // If this is the first patient or patient from new reports doesn't match selected
+                    const newPatients = [...new Set(newReports.map(r => r.patientName))];
+                    if (newPatients.length > 0 && (!selectedPatient || !newPatients.includes(selectedPatient))) {
+                      setSelectedPatient(newPatients[0]); // Auto-select the first new patient
+                    }
+                    
                     toast({
                       title: "Reports processed successfully",
                       description: `${extractedReports.length} blood report(s) extracted and added to your health records.`,
@@ -200,16 +217,48 @@ export const BloodReportDashboard = () => {
           </Card>
         )}
 
+        {/* Patient Selection */}
+        <PatientSelector 
+          reports={reports}
+          selectedPatient={selectedPatient}
+          onPatientChange={setSelectedPatient}
+        />
+
+        {/* Show message if no patient selected */}
+        {!selectedPatient && reports.length > 0 && (
+          <Card className="border-muted">
+            <CardContent className="p-6 text-center">
+              <p className="text-muted-foreground">
+                Please select a patient above to view their health data and trends.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show message if no data for selected patient */}
+        {selectedPatient && patientReports.length === 0 && (
+          <Card className="border-muted">
+            <CardContent className="p-6 text-center">
+              <p className="text-muted-foreground">
+                No reports found for {selectedPatient}. Upload blood reports to start tracking.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Main Content - Only show if we have patient data */}
+        {selectedPatient && latestReport && (
+        <>
         {/* Critical Alerts */}
         {criticalChanges.length > 0 && (
           <Card className="border-warning">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-warning">
                 <AlertTriangle size={20} />
-                Attention Required
+                Attention Required - {selectedPatient}
               </CardTitle>
               <CardDescription>
-                Significant changes detected in your latest report
+                Significant changes detected in {selectedPatient}'s latest report
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -247,7 +296,7 @@ export const BloodReportDashboard = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Activity size={20} />
-                  Latest Report - {latestReport.date}
+                  Latest Report - {latestReport.date} ({selectedPatient})
                 </CardTitle>
                 <CardDescription>{latestReport.type}</CardDescription>
               </CardHeader>
@@ -273,14 +322,14 @@ export const BloodReportDashboard = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp size={20} />
-                  Parameter Trends
+                  Parameter Trends - {selectedPatient}
                 </CardTitle>
                 <CardDescription>
-                  Track how your health parameters change over time
+                  Track how {selectedPatient}'s health parameters change over time
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <TrendChart reports={reports} />
+                <TrendChart reports={patientReports} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -299,6 +348,8 @@ export const BloodReportDashboard = () => {
             />
           </TabsContent>
         </Tabs>
+        </>
+        )}
       </div>
     </div>
   );
