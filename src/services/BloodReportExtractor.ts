@@ -1,4 +1,7 @@
-import pdfParse from 'pdf-parse';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up the worker for PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export interface BloodParameter {
   value: number;
@@ -28,18 +31,18 @@ export class BloodReportExtractor {
     },
     wbc: {
       patterns: [
-        /white blood cell[s]?[:\s]+(\d+\.?\d*)\s*([\/μl|cells\/μl|k\/μl])/i,
-        /wbc[:\s]+(\d+\.?\d*)\s*([\/μl|cells\/μl|k\/μl])/i,
-        /leukocytes[:\s]+(\d+\.?\d*)\s*([\/μl|cells\/μl|k\/μl])/i
+        /white blood cell[s]?[:\s]+(\d+\.?\d*)\s*(cells|k|thousand)/i,
+        /wbc[:\s]+(\d+\.?\d*)\s*(cells|k|thousand)/i,
+        /leukocytes[:\s]+(\d+\.?\d*)\s*(cells|k|thousand)/i
       ],
       optimal: "4500-11000",
       unit: "/μL"
     },
     platelets: {
       patterns: [
-        /platelet[s]?[:\s]+(\d+\.?\d*)\s*([\/μl|cells\/μl|k\/μl])/i,
-        /plt[:\s]+(\d+\.?\d*)\s*([\/μl|cells\/μl|k\/μl])/i,
-        /thrombocytes[:\s]+(\d+\.?\d*)\s*([\/μl|cells\/μl|k\/μl])/i
+        /platelet[s]?[:\s]+(\d+\.?\d*)\s*(cells|k|thousand)/i,
+        /plt[:\s]+(\d+\.?\d*)\s*(cells|k|thousand)/i,
+        /thrombocytes[:\s]+(\d+\.?\d*)\s*(cells|k|thousand)/i
       ],
       optimal: "150000-450000",
       unit: "/μL"
@@ -73,8 +76,8 @@ export class BloodReportExtractor {
     },
     creatinine: {
       patterns: [
-        /creatinine[:\s]+(\d+\.?\d*)\s*(mg\/dl|μmol\/l)/i,
-        /creat[:\s]+(\d+\.?\d*)\s*(mg\/dl|μmol\/l)/i
+        /creatinine[:\s]+(\d+\.?\d*)\s*(mg\/dl)/i,
+        /creat[:\s]+(\d+\.?\d*)\s*(mg\/dl)/i
       ],
       optimal: "0.6-1.2",
       unit: "mg/dL"
@@ -169,20 +172,35 @@ export class BloodReportExtractor {
     return parameters;
   }
 
-  // Process PDF file
+  // Process PDF file using PDF.js
   static async processPDFFile(file: File): Promise<ExtractedReport | null> {
     try {
       console.log('Processing PDF file:', file.name);
       
       const arrayBuffer = await file.arrayBuffer();
-      const data = await pdfParse(Buffer.from(arrayBuffer));
-      const text = data.text;
+      const typedArray = new Uint8Array(arrayBuffer);
+      
+      // Load the PDF document
+      const pdf = await pdfjsLib.getDocument(typedArray).promise;
+      console.log('PDF loaded, pages:', pdf.numPages);
+      
+      let extractedText = '';
+      
+      // Extract text from all pages
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => ('str' in item ? item.str : ''))
+          .join(' ');
+        extractedText += pageText + ' ';
+      }
 
-      console.log('Extracted PDF text:', text.substring(0, 500) + '...');
+      console.log('Extracted PDF text:', extractedText.substring(0, 500) + '...');
 
-      const extractedDate = this.extractDate(text);
-      const reportType = this.extractReportType(text);
-      const parameters = this.extractParameters(text);
+      const extractedDate = this.extractDate(extractedText);
+      const reportType = this.extractReportType(extractedText);
+      const parameters = this.extractParameters(extractedText);
 
       console.log('Extracted parameters:', parameters);
 
@@ -256,9 +274,13 @@ export class BloodReportExtractor {
     const results: ExtractedReport[] = [];
     
     for (const file of files) {
-      const result = await this.processFile(file);
-      if (result) {
-        results.push(result);
+      try {
+        const result = await this.processFile(file);
+        if (result) {
+          results.push(result);
+        }
+      } catch (error) {
+        console.error('Error processing file:', file.name, error);
       }
     }
     
