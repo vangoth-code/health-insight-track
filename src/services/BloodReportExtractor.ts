@@ -14,11 +14,24 @@ let ocrPipeline: any = null;
 
 async function getOCRPipeline() {
   if (!ocrPipeline) {
-    console.log('🤖 Initializing OCR pipeline...');
-    ocrPipeline = await pipeline('image-to-text', 'Xenova/trocr-base-printed', {
-      device: 'webgpu'
-    });
-    console.log('✅ OCR pipeline ready!');
+    try {
+      console.log('🤖 Initializing OCR pipeline...');
+      console.log('🌐 Checking WebGPU support...');
+      
+      // Try WebGPU first, fallback to CPU
+      try {
+        ocrPipeline = await pipeline('image-to-text', 'Xenova/trocr-base-printed', { device: 'webgpu' });
+        console.log('✅ OCR pipeline ready with WebGPU!');
+      } catch (webgpuError) {
+        console.warn('⚠️ WebGPU failed, trying CPU:', webgpuError);
+        ocrPipeline = await pipeline('image-to-text', 'Xenova/trocr-base-printed', { device: 'cpu' });
+        console.log('✅ OCR pipeline ready with CPU!');
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to initialize OCR pipeline:', error);
+      throw new Error(`OCR initialization failed: ${error instanceof Error ? error.message : error}`);
+    }
   }
   return ocrPipeline;
 }
