@@ -97,7 +97,11 @@ export const BloodReportDashboard = () => {
 
   const handleFileUpload = async (files: File[]) => {
     try {
-      console.log('Starting file processing for', files.length, 'files');
+      console.log('=== handleFileUpload called with files:', files);
+      console.log('Number of files:', files.length);
+      files.forEach((file, index) => {
+        console.log(`File ${index}:`, file.name, file.type, file.size);
+      });
       
       // Show processing toast
       toast({
@@ -106,9 +110,12 @@ export const BloodReportDashboard = () => {
       });
 
       // Process files using BloodReportExtractor
+      console.log('=== Starting BloodReportExtractor.processFiles');
       const extractedReports = await BloodReportExtractor.processFiles(files);
+      console.log('=== BloodReportExtractor completed. Results:', extractedReports);
       
       if (extractedReports.length === 0) {
+        console.log('=== No reports extracted');
         toast({
           title: "No data extracted",
           description: "Could not extract blood test data from the uploaded files. Please ensure they contain readable test results.",
@@ -128,12 +135,20 @@ export const BloodReportDashboard = () => {
         parameters: extracted.parameters
       }));
 
+      console.log('=== New reports to add:', newReports);
+
       // Add new reports to existing reports
-      setReports(prevReports => [...prevReports, ...newReports]);
+      setReports(prevReports => {
+        console.log('=== Previous reports:', prevReports);
+        const updatedReports = [...prevReports, ...newReports];
+        console.log('=== Updated reports:', updatedReports);
+        return updatedReports;
+      });
 
       // If this is a new patient, switch to them
       const newPatients = [...new Set(newReports.map(r => r.patientName))];
-      if (newPatients.length > 0 && !reports.some(r => r.patientName === newPatients[0])) {
+      if (newPatients.length > 0) {
+        console.log('=== New patients found:', newPatients);
         setSelectedPatient(newPatients[0]);
       }
 
@@ -146,10 +161,10 @@ export const BloodReportDashboard = () => {
         description: `Successfully processed ${extractedReports.length} out of ${files.length} files. ${newPatients.join(', ')} added to your records.`,
       });
 
-      console.log('Successfully processed reports:', newReports);
+      console.log('=== Upload process completed successfully');
 
     } catch (error) {
-      console.error('Error processing files:', error);
+      console.error('=== Error processing files:', error);
       toast({
         title: "Processing failed",
         description: "An error occurred while processing your files. Please try again or check the file format.",
