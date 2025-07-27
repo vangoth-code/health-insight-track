@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up the worker for PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set up the worker for PDF.js - using a more reliable CDN
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.js';
 
 export interface BloodParameter {
   value: number;
@@ -212,43 +212,62 @@ export class BloodReportExtractor {
   // Process PDF file using PDF.js
   static async processPDFFile(file: File): Promise<ExtractedReport | null> {
     try {
-      console.log('Processing PDF file:', file.name);
+      console.log('🔄 Processing PDF file:', file.name);
       
       const arrayBuffer = await file.arrayBuffer();
+      console.log('📄 File buffer created, size:', arrayBuffer.byteLength);
+      
       const typedArray = new Uint8Array(arrayBuffer);
       
-      // Load the PDF document
-      const pdf = await pdfjsLib.getDocument(typedArray).promise;
-      console.log('PDF loaded, pages:', pdf.numPages);
+      // Add timeout for PDF loading
+      const loadPDFWithTimeout = () => {
+        return Promise.race([
+          pdfjsLib.getDocument(typedArray).promise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('PDF loading timeout')), 10000)
+          )
+        ]);
+      };
+      
+      console.log('📖 Loading PDF document...');
+      const pdf = await loadPDFWithTimeout() as any;
+      console.log('✅ PDF loaded successfully! Pages:', pdf.numPages);
       
       let extractedText = '';
       
       // Extract text from all pages
-      for (let i = 1; i <= pdf.numPages; i++) {
+      for (let i = 1; i <= Math.min(pdf.numPages, 5); i++) { // Limit to first 5 pages
+        console.log(`📑 Processing page ${i}...`);
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items
           .map((item: any) => ('str' in item ? item.str : ''))
           .join(' ');
         extractedText += pageText + ' ';
+        console.log(`📝 Page ${i} text length:`, pageText.length);
       }
 
-      console.log('Extracted PDF text:', extractedText.substring(0, 500) + '...');
+      console.log('📋 Total extracted text length:', extractedText.length);
+      console.log('📋 First 500 chars:', extractedText.substring(0, 500));
 
       const extractedDate = this.extractDate(extractedText);
       const reportType = this.extractReportType(extractedText);
       const patientName = this.extractPatientName(extractedText);
       const parameters = this.extractParameters(extractedText);
 
-      console.log('Extracted patient name:', patientName);
-      console.log('Extracted parameters:', parameters);
+      console.log('📊 Extracted data:');
+      console.log('  - Date:', extractedDate);
+      console.log('  - Type:', reportType);
+      console.log('  - Patient:', patientName);
+      console.log('  - Parameters:', parameters);
 
       if (Object.keys(parameters).length === 0) {
-        console.warn('No parameters found in PDF');
+        console.warn('⚠️ No blood parameters found in PDF text');
+        console.log('Full text for debugging:', extractedText);
         return null;
       }
 
-      return {
+      const result = {
         id: Math.random().toString(36).substr(2, 9),
         date: extractedDate,
         type: reportType,
@@ -256,8 +275,13 @@ export class BloodReportExtractor {
         patientName,
         parameters
       };
+
+      console.log('✅ Successfully extracted report:', result);
+      return result;
+
     } catch (error) {
-      console.error('Error processing PDF:', error);
+      console.error('❌ Error processing PDF:', error);
+      console.error('Error details:', error instanceof Error ? error.message : error);
       return null;
     }
   }
