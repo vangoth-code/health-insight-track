@@ -1,9 +1,13 @@
 import { pipeline, env } from '@huggingface/transformers';
 import { PDFDocument } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure transformers.js
 env.allowLocalModels = false;
 env.useBrowserCache = false;
+
+// Set up PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 // Initialize OCR pipeline
 let ocrPipeline: any = null;
@@ -326,8 +330,15 @@ export class BloodReportExtractor {
     try {
       console.log(`🤖 Starting OCR for page ${pageNumber}...`);
       
-      // Create an image from the PDF page (simplified approach)
-      // In a real implementation, you'd use PDF rendering to canvas
+      // Load PDF with PDF.js to render to canvas
+      const arrayBuffer = await pdfBlob.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+      
+      // Get the page
+      const page = await pdf.getPage(1); // Single page PDF
+      console.log(`📊 Page ${pageNumber} dimensions:`, page.getViewport({ scale: 1 }));
+      
+      // Create canvas for rendering
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
@@ -335,22 +346,24 @@ export class BloodReportExtractor {
         throw new Error('Could not get canvas context');
       }
       
-      // For now, create a mock image data URL for OCR
-      // In production, you'd need a PDF-to-image converter
-      canvas.width = 800;
-      canvas.height = 1000;
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Set up viewport and canvas
+      const scale = 2; // Higher scale for better OCR quality
+      const viewport = page.getViewport({ scale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
       
-      // Add some mock text for testing
-      ctx.fillStyle = 'black';
-      ctx.font = '14px Arial';
-      ctx.fillText('Blood Test Report', 50, 50);
-      ctx.fillText('Patient: John Doe', 50, 80);
-      ctx.fillText('Hemoglobin: 13.5 g/dL', 50, 110);
-      ctx.fillText('Glucose: 95 mg/dL', 50, 140);
+      console.log(`🎨 Rendering page ${pageNumber} to canvas...`);
       
-      const imageDataUrl = canvas.toDataURL('image/png');
+      // Render page to canvas
+      await page.render({
+        canvasContext: ctx,
+        viewport: viewport
+      }).promise;
+      
+      console.log(`✅ Page ${pageNumber} rendered to canvas`);
+      
+      // Convert canvas to image data URL
+      const imageDataUrl = canvas.toDataURL('image/png', 1.0);
       
       // Get OCR pipeline and process the image
       const ocr = await getOCRPipeline();
@@ -360,6 +373,8 @@ export class BloodReportExtractor {
       const extractedText = result.generated_text || '';
       
       console.log(`✅ OCR completed for page ${pageNumber}, text length:`, extractedText.length);
+      console.log(`📝 OCR result for page ${pageNumber}:`, extractedText.substring(0, 200));
+      
       return extractedText;
       
     } catch (error) {
