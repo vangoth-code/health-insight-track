@@ -466,14 +466,32 @@ export class BloodReportExtractor {
       
       // Get OCR pipeline and process the image
       console.log('🤖 Getting OCR pipeline for image...');
-      const ocr = await getOCRPipeline();
+      
+      let ocr;
+      try {
+        ocr = await getOCRPipeline();
+        console.log('✅ OCR pipeline obtained successfully');
+      } catch (pipelineError) {
+        console.error('❌ Failed to get OCR pipeline:', pipelineError);
+        console.error('❌ Pipeline error details:', pipelineError instanceof Error ? pipelineError.message : pipelineError);
+        throw new Error(`OCR pipeline failed: ${pipelineError instanceof Error ? pipelineError.message : pipelineError}`);
+      }
+      
       console.log('🔍 Running OCR on image...');
       
       // Add timeout for OCR processing
-      const result = await Promise.race([
-        ocr(imageDataUrl),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('OCR timeout')), 30000))
-      ]);
+      let result;
+      try {
+        result = await Promise.race([
+          ocr(imageDataUrl),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('OCR timeout after 30 seconds')), 30000))
+        ]);
+        console.log('✅ OCR processing completed');
+      } catch (ocrError) {
+        console.error('❌ OCR processing failed:', ocrError);
+        console.error('❌ OCR error details:', ocrError instanceof Error ? ocrError.message : ocrError);
+        throw new Error(`OCR processing failed: ${ocrError instanceof Error ? ocrError.message : ocrError}`);
+      }
       
       const extractedText = result.generated_text || '';
       console.log('📝 OCR extracted text length:', extractedText.length);
