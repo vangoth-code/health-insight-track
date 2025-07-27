@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
+import { format } from "date-fns";
 
 interface Report {
   id: number;
@@ -22,14 +23,17 @@ export const TrendChart = ({ reports }: TrendChartProps) => {
     ? Object.keys(reports[0].parameters)
     : [];
 
-  // Transform data for the chart
+  // Transform data for the chart - sort by actual report date, not upload date
   const chartData = reports
     .map(report => ({
-      date: report.date,
+      date: format(new Date(report.date), 'MMM dd'), // Format date for display
+      fullDate: report.date, // Keep original date for tooltip
       value: report.parameters[selectedParameter]?.value || 0,
-      unit: report.parameters[selectedParameter]?.unit || ""
+      unit: report.parameters[selectedParameter]?.unit || "",
+      reportDate: new Date(report.date) // Convert to Date object for proper sorting
     }))
-    .reverse(); // Reverse to show chronological order
+    .sort((a, b) => a.reportDate.getTime() - b.reportDate.getTime()) // Sort chronologically by test date
+    .map(({ reportDate, ...rest }) => rest); // Remove the temporary Date object
 
   const formatParameterName = (name: string) => {
     return name
@@ -56,7 +60,7 @@ export const TrendChart = ({ reports }: TrendChartProps) => {
       const data = payload[0];
       return (
         <div className="bg-card border border-border rounded-lg p-3 shadow-md">
-          <p className="font-medium">{label}</p>
+          <p className="font-medium">Test Date: {format(new Date(data.payload.fullDate), 'MMM dd, yyyy')}</p>
           <p className="text-primary">
             {formatParameterName(selectedParameter)}: {data.value} {data.payload.unit}
           </p>

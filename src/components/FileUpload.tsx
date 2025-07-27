@@ -102,7 +102,7 @@ export const FileUpload = ({ onUpload }: FileUploadProps) => {
             <div>
               <h3 className="text-lg font-medium">Upload Blood Report</h3>
               <p className="text-muted-foreground">
-                Drag and drop your report here, or click to browse
+                Drag and drop your report here, or click to browse. The system will extract the test date from the report for accurate trend analysis.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">

@@ -10,12 +10,13 @@ import { TrendChart } from "./TrendChart";
 import { ComparisonView } from "./ComparisonView";
 import { SuggestionsPanel } from "./SuggestionsPanel";
 
-// Mock data for demonstration
+// Mock data for demonstration - dates represent actual test/report dates, not upload dates
 const mockReports = [
   {
     id: 1,
-    date: "2024-01-15",
+    date: "2024-01-15", // Actual test date from the blood report
     type: "Complete Blood Count",
+    uploadDate: "2024-01-20", // When the report was uploaded (separate field)
     parameters: {
       hemoglobin: { value: 13.2, unit: "g/dL", optimal: "12-15" },
       wbc: { value: 7200, unit: "/μL", optimal: "4500-11000" },
@@ -27,8 +28,9 @@ const mockReports = [
   },
   {
     id: 2,
-    date: "2024-01-01",
-    type: "Complete Blood Count",
+    date: "2024-01-01", // Actual test date from the blood report
+    type: "Complete Blood Count", 
+    uploadDate: "2024-01-05", // When the report was uploaded (separate field)
     parameters: {
       hemoglobin: { value: 12.8, unit: "g/dL", optimal: "12-15" },
       wbc: { value: 6800, unit: "/μL", optimal: "4500-11000" },
