@@ -11,6 +11,7 @@ import { FileUpload } from "@/components/FileUpload";
 import { PatientSelector } from "@/components/PatientSelector";
 import { TrendChart } from "@/components/TrendChart";
 import { ComparisonView } from "@/components/ComparisonView";
+import { BloodReportExtractor } from "@/services/BloodReportExtractor";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ParameterCard } from "@/components/ParameterCard";
 
@@ -94,12 +95,67 @@ export const BloodReportDashboard = () => {
   const latestReport = patientReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
   const previousReport = patientReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[1];
 
-  const handleFileUpload = (files: File[]) => {
-    // In a real app, this would process the files and extract data
-    toast({
-      title: "Files uploaded successfully",
-      description: `${files.length} file(s) have been processed. Results will appear after analysis.`,
-    });
+  const handleFileUpload = async (files: File[]) => {
+    try {
+      console.log('Starting file processing for', files.length, 'files');
+      
+      // Show processing toast
+      toast({
+        title: "Processing files...",
+        description: `Analyzing ${files.length} file(s). This may take a moment.`,
+      });
+
+      // Process files using BloodReportExtractor
+      const extractedReports = await BloodReportExtractor.processFiles(files);
+      
+      if (extractedReports.length === 0) {
+        toast({
+          title: "No data extracted",
+          description: "Could not extract blood test data from the uploaded files. Please ensure they contain readable test results.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Convert extracted reports to BloodReport format and add to state
+      const newReports: BloodReport[] = extractedReports.map(extracted => ({
+        id: extracted.id,
+        date: extracted.date,
+        type: extracted.type,
+        uploadDate: new Date().toISOString().split('T')[0],
+        fileName: extracted.fileName,
+        patientName: extracted.patientName,
+        parameters: extracted.parameters
+      }));
+
+      // Add new reports to existing reports
+      setReports(prevReports => [...prevReports, ...newReports]);
+
+      // If this is a new patient, switch to them
+      const newPatients = [...new Set(newReports.map(r => r.patientName))];
+      if (newPatients.length > 0 && !reports.some(r => r.patientName === newPatients[0])) {
+        setSelectedPatient(newPatients[0]);
+      }
+
+      // Switch to overview tab to show results
+      setActiveTab("overview");
+
+      // Success toast
+      toast({
+        title: "Upload successful!",
+        description: `Successfully processed ${extractedReports.length} out of ${files.length} files. ${newPatients.join(', ')} added to your records.`,
+      });
+
+      console.log('Successfully processed reports:', newReports);
+
+    } catch (error) {
+      console.error('Error processing files:', error);
+      toast({
+        title: "Processing failed",
+        description: "An error occurred while processing your files. Please try again or check the file format.",
+        variant: "destructive"
+      });
+    }
   };
 
   const getParameterStatus = (value: number, optimal: string): "normal" | "high" | "low" => {
