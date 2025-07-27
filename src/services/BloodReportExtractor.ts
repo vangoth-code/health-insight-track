@@ -1,7 +1,15 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up the worker for PDF.js - using a more reliable CDN
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.js';
+// Set up the worker for PDF.js - try multiple fallbacks
+try {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.js',
+    import.meta.url
+  ).toString();
+} catch {
+  // Fallback to CDN
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.js';
+}
 
 export interface BloodParameter {
   value: number;
@@ -219,18 +227,29 @@ export class BloodReportExtractor {
       
       const typedArray = new Uint8Array(arrayBuffer);
       
-      // Add timeout for PDF loading
-      const loadPDFWithTimeout = () => {
-        return Promise.race([
-          pdfjsLib.getDocument(typedArray).promise,
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('PDF loading timeout')), 10000)
-          )
-        ]);
+      console.log('📖 Loading PDF document...');
+      
+      // Try to load PDF with better error handling
+      const loadingTask = pdfjsLib.getDocument({
+        data: typedArray,
+        verbosity: 0, // Reduce console spam
+        disableAutoFetch: true,
+        disableStream: true
+      });
+      
+      // Add proper error handling for the loading task
+      loadingTask.onPassword = (callback: any, reason: any) => {
+        console.error('❌ PDF is password protected');
+        throw new Error('PDF is password protected');
       };
       
-      console.log('📖 Loading PDF document...');
-      const pdf = await loadPDFWithTimeout() as any;
+      const pdf = await Promise.race([
+        loadingTask.promise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('PDF loading timeout after 15 seconds')), 15000)
+        )
+      ]) as any;
+      
       console.log('✅ PDF loaded successfully! Pages:', pdf.numPages);
       
       let extractedText = '';
