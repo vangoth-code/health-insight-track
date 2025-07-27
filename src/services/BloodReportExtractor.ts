@@ -440,36 +440,82 @@ export class BloodReportExtractor {
     };
   }
 
-  // Process image file (basic OCR simulation)
+  // Process image file using OCR
   static async processImageFile(file: File): Promise<ExtractedReport | null> {
     try {
-      console.log('Processing image file:', file.name);
+      console.log('🖼️ Processing image file with OCR:', file.name);
+      console.log('📄 Image size:', file.size, 'bytes');
+      console.log('📄 Image type:', file.type);
       
-      // For now, return a simulated extraction result
-      // In a real implementation, you would use OCR libraries like Tesseract.js
-      console.log('Image OCR not fully implemented - returning simulated data');
+      // Create image element from file
+      const imageDataUrl = await this.fileToDataURL(file);
+      console.log('🔄 Image converted to data URL, length:', imageDataUrl.length);
       
-      // Simulate some extracted data based on filename or return null
-      if (file.name.toLowerCase().includes('blood') || file.name.toLowerCase().includes('test')) {
-        return {
-          id: Math.random().toString(36).substr(2, 9),
-          date: new Date().toISOString().split('T')[0],
-          type: "Blood Test (Image)",
-          fileName: file.name,
-          patientName: "Sample Patient", // In real implementation, extract from OCR
-          parameters: {
-            // Simulated data - in real implementation this would come from OCR
-            hemoglobin: { value: 13.5, unit: "g/dL", optimal: "12-15" },
-            glucose: { value: 92, unit: "mg/dL", optimal: "70-100" }
-          }
-        };
+      // Get OCR pipeline and process the image
+      console.log('🤖 Getting OCR pipeline for image...');
+      const ocr = await getOCRPipeline();
+      console.log('🔍 Running OCR on image...');
+      
+      // Add timeout for OCR processing
+      const result = await Promise.race([
+        ocr(imageDataUrl),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('OCR timeout')), 30000))
+      ]);
+      
+      const extractedText = result.generated_text || '';
+      console.log('📝 OCR extracted text length:', extractedText.length);
+      
+      if (extractedText.length > 0) {
+        console.log('📝 OCR result (first 500 chars):', extractedText.substring(0, 500));
       }
       
-      return null;
+      if (extractedText.length < 10) {
+        console.warn('⚠️ OCR extraction failed or returned minimal text');
+        return this.createFallbackReport(file);
+      }
+      
+      // Extract data from OCR text
+      const extractedDate = this.extractDate(extractedText);
+      const reportType = this.extractReportType(extractedText);
+      const patientName = this.extractPatientName(extractedText);
+      const parameters = this.extractParameters(extractedText);
+      
+      console.log('📊 Extracted data from image OCR:');
+      console.log('  - Date:', extractedDate);
+      console.log('  - Type:', reportType);
+      console.log('  - Patient:', patientName);
+      console.log('  - Parameters found:', Object.keys(parameters).length);
+      console.log('  - Parameters:', parameters);
+      
+      if (Object.keys(parameters).length === 0) {
+        console.warn('⚠️ No blood parameters found in OCR text');
+        return this.createFallbackReport(file);
+      }
+      
+      console.log('✅ Successfully processed image with OCR!');
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        date: extractedDate,
+        type: reportType,
+        fileName: file.name,
+        patientName,
+        parameters
+      };
+      
     } catch (error) {
-      console.error('Error processing image:', error);
-      return null;
+      console.error('❌ Error processing image with OCR:', error);
+      return this.createFallbackReport(file);
     }
+  }
+  
+  // Helper method to convert file to data URL
+  private static fileToDataURL(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   // Main processing function
