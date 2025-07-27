@@ -330,13 +330,41 @@ export class BloodReportExtractor {
     try {
       console.log(`🤖 Starting OCR for page ${pageNumber}...`);
       
+      // Add timeout wrapper
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`OCR timeout for page ${pageNumber}`)), 30000);
+      });
+      
+      const ocrPromise = this.performOCRWithPDFJS(pdfBlob, pageNumber);
+      
+      return await Promise.race([ocrPromise, timeoutPromise]) as string;
+      
+    } catch (error) {
+      console.error(`❌ OCR failed for page ${pageNumber}:`, error);
+      return '';
+    }
+  }
+  
+  private static async performOCRWithPDFJS(pdfBlob: Blob, pageNumber: number): Promise<string> {
+    try {
+      console.log(`📊 Loading PDF with PDF.js for page ${pageNumber}...`);
+      
       // Load PDF with PDF.js to render to canvas
       const arrayBuffer = await pdfBlob.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+      console.log(`📊 PDF array buffer size: ${arrayBuffer.byteLength}`);
+      
+      const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+      console.log(`📊 PDF loading task created for page ${pageNumber}`);
+      
+      const pdf = await loadingTask.promise;
+      console.log(`✅ PDF loaded with PDF.js for page ${pageNumber}`);
       
       // Get the page
       const page = await pdf.getPage(1); // Single page PDF
-      console.log(`📊 Page ${pageNumber} dimensions:`, page.getViewport({ scale: 1 }));
+      console.log(`📊 Page ${pageNumber} loaded, getting viewport...`);
+      
+      const viewport = page.getViewport({ scale: 1 });
+      console.log(`📊 Page ${pageNumber} viewport:`, viewport.width, 'x', viewport.height);
       
       // Create canvas for rendering
       const canvas = document.createElement('canvas');
@@ -347,39 +375,50 @@ export class BloodReportExtractor {
       }
       
       // Set up viewport and canvas
-      const scale = 2; // Higher scale for better OCR quality
-      const viewport = page.getViewport({ scale });
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      const scale = 1.5; // Moderate scale for good OCR quality
+      const scaledViewport = page.getViewport({ scale });
+      canvas.width = scaledViewport.width;
+      canvas.height = scaledViewport.height;
       
-      console.log(`🎨 Rendering page ${pageNumber} to canvas...`);
+      console.log(`🎨 Starting to render page ${pageNumber} to canvas (${canvas.width}x${canvas.height})...`);
       
-      // Render page to canvas
-      await page.render({
-        canvasContext: ctx,
-        viewport: viewport
-      }).promise;
+      // Render page to canvas with timeout
+      await Promise.race([
+        page.render({
+          canvasContext: ctx,
+          viewport: scaledViewport
+        }).promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Canvas render timeout')), 15000))
+      ]);
       
-      console.log(`✅ Page ${pageNumber} rendered to canvas`);
+      console.log(`✅ Page ${pageNumber} rendered to canvas successfully`);
       
       // Convert canvas to image data URL
-      const imageDataUrl = canvas.toDataURL('image/png', 1.0);
+      const imageDataUrl = canvas.toDataURL('image/png', 0.8);
+      console.log(`🖼️ Page ${pageNumber} converted to image data URL, length: ${imageDataUrl.length}`);
       
       // Get OCR pipeline and process the image
+      console.log(`🤖 Getting OCR pipeline for page ${pageNumber}...`);
       const ocr = await getOCRPipeline();
       console.log(`🔍 Running OCR on page ${pageNumber}...`);
       
-      const result = await ocr(imageDataUrl);
+      const result = await Promise.race([
+        ocr(imageDataUrl),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('OCR processing timeout')), 20000))
+      ]);
+      
       const extractedText = result.generated_text || '';
       
       console.log(`✅ OCR completed for page ${pageNumber}, text length:`, extractedText.length);
-      console.log(`📝 OCR result for page ${pageNumber}:`, extractedText.substring(0, 200));
+      if (extractedText.length > 0) {
+        console.log(`📝 OCR result for page ${pageNumber} (first 300 chars):`, extractedText.substring(0, 300));
+      }
       
       return extractedText;
       
     } catch (error) {
-      console.error(`❌ OCR failed for page ${pageNumber}:`, error);
-      return '';
+      console.error(`❌ Detailed OCR error for page ${pageNumber}:`, error);
+      throw error;
     }
   }
   
