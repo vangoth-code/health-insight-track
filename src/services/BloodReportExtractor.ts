@@ -229,28 +229,41 @@ export class BloodReportExtractor {
       
       console.log('📖 Loading PDF document...');
       
-      // Try to load PDF with better error handling
-      const loadingTask = pdfjsLib.getDocument({
-        data: typedArray,
-        verbosity: 0, // Reduce console spam
-        disableAutoFetch: true,
-        disableStream: true
-      });
-      
-      // Add proper error handling for the loading task
-      loadingTask.onPassword = (callback: any, reason: any) => {
-        console.error('❌ PDF is password protected');
-        throw new Error('PDF is password protected');
-      };
-      
-      const pdf = await Promise.race([
-        loadingTask.promise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('PDF loading timeout after 15 seconds')), 15000)
-        )
-      ]) as any;
-      
-      console.log('✅ PDF loaded successfully! Pages:', pdf.numPages);
+      let pdf: any;
+      try {
+        // Try to load PDF with better error handling
+        const loadingTask = pdfjsLib.getDocument({
+          data: typedArray,
+          verbosity: 0, // Reduce console spam
+          disableAutoFetch: true,
+          disableStream: true
+        });
+        
+        console.log('📋 Loading task created, waiting for promise...');
+        
+        // Add proper error handling for the loading task
+        loadingTask.onPassword = (callback: any, reason: any) => {
+          console.error('❌ PDF is password protected');
+          throw new Error('PDF is password protected');
+        };
+        
+        pdf = await Promise.race([
+          loadingTask.promise,
+          new Promise((_, reject) => 
+            setTimeout(() => {
+              console.error('❌ PDF loading timeout after 15 seconds');
+              reject(new Error('PDF loading timeout after 15 seconds'));
+            }, 15000)
+          )
+        ]);
+        
+        console.log('✅ PDF loaded successfully! Pages:', pdf.numPages);
+      } catch (pdfError) {
+        console.error('❌ PDF loading failed:', pdfError);
+        console.error('❌ PDF error details:', pdfError instanceof Error ? pdfError.message : pdfError);
+        console.error('❌ PDF error stack:', pdfError instanceof Error ? pdfError.stack : 'No stack');
+        throw pdfError;
+      }
       
       let extractedText = '';
       
