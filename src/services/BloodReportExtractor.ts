@@ -1,18 +1,4 @@
-import { pipeline } from '@huggingface/transformers';
-
-// Initialize OCR pipeline for text extraction
-let ocrPipeline: any = null;
-
-async function getOCRPipeline() {
-  if (!ocrPipeline) {
-    console.log('🤖 Initializing OCR pipeline...');
-    ocrPipeline = await pipeline('image-to-text', 'Xenova/trocr-base-printed', {
-      device: 'webgpu'
-    });
-    console.log('✅ OCR pipeline ready!');
-  }
-  return ocrPipeline;
-}
+import pdfParse from 'pdf-parse';
 
 export interface BloodParameter {
   value: number;
@@ -220,71 +206,58 @@ export class BloodReportExtractor {
     return parameters;
   }
 
-  // Convert PDF pages to images and use OCR
+  // Process PDF file using pdf-parse
   static async processPDFFile(file: File): Promise<ExtractedReport | null> {
     try {
-      console.log('🔄 Processing PDF with OCR approach:', file.name);
+      console.log('🔄 Processing PDF with pdf-parse:', file.name);
       
-      // Convert PDF to images using Canvas API
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      // Convert file to buffer
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
       
-      if (!ctx) {
-        throw new Error('Canvas context not available');
-      }
+      console.log('📄 File buffer created, size:', buffer.length);
       
-      // For now, create a mock image for OCR processing
-      console.log('📸 Converting PDF to image for OCR...');
+      // Parse PDF and extract text
+      console.log('📖 Parsing PDF...');
+      const data = await pdfParse(buffer);
       
-      // Create a data URL for the OCR pipeline
-      const dataUrl = canvas.toDataURL();
+      const extractedText = data.text;
+      console.log('📝 Extracted text length:', extractedText.length);
+      console.log('📝 First 500 chars:', extractedText.substring(0, 500));
       
-      try {
-        const ocr = await getOCRPipeline();
-        console.log('🔍 Running OCR on PDF image...');
-        
-        const result = await ocr(dataUrl);
-        const extractedText = result.generated_text || '';
-        
-        console.log('📝 OCR extracted text:', extractedText);
-        
-        if (!extractedText || extractedText.length < 10) {
-          console.warn('⚠️ OCR extracted minimal text, using fallback');
-          return this.createFallbackReport(file);
-        }
-        
-        const extractedDate = this.extractDate(extractedText);
-        const reportType = this.extractReportType(extractedText);
-        const patientName = this.extractPatientName(extractedText);
-        const parameters = this.extractParameters(extractedText);
-        
-        console.log('📊 Extracted data from OCR:');
-        console.log('  - Date:', extractedDate);
-        console.log('  - Type:', reportType);
-        console.log('  - Patient:', patientName);
-        console.log('  - Parameters:', parameters);
-        
-        if (Object.keys(parameters).length === 0) {
-          console.warn('⚠️ No blood parameters found in OCR text');
-          return this.createFallbackReport(file);
-        }
-        
-        return {
-          id: Math.random().toString(36).substr(2, 9),
-          date: extractedDate,
-          type: reportType,
-          fileName: file.name,
-          patientName,
-          parameters
-        };
-        
-      } catch (ocrError) {
-        console.error('❌ OCR processing failed:', ocrError);
+      if (!extractedText || extractedText.length < 50) {
+        console.warn('⚠️ PDF text extraction failed or minimal text found');
         return this.createFallbackReport(file);
       }
       
+      const extractedDate = this.extractDate(extractedText);
+      const reportType = this.extractReportType(extractedText);
+      const patientName = this.extractPatientName(extractedText);
+      const parameters = this.extractParameters(extractedText);
+      
+      console.log('📊 Extracted data from PDF:');
+      console.log('  - Date:', extractedDate);
+      console.log('  - Type:', reportType);
+      console.log('  - Patient:', patientName);
+      console.log('  - Parameters:', parameters);
+      
+      if (Object.keys(parameters).length === 0) {
+        console.warn('⚠️ No blood parameters found in PDF text');
+        console.log('Full extracted text for debugging:', extractedText);
+        return this.createFallbackReport(file);
+      }
+      
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        date: extractedDate,
+        type: reportType,
+        fileName: file.name,
+        patientName,
+        parameters
+      };
+      
     } catch (error) {
-      console.error('❌ Error processing PDF:', error);
+      console.error('❌ Error processing PDF with pdf-parse:', error);
       return this.createFallbackReport(file);
     }
   }
