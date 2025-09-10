@@ -1,9 +1,11 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Upload, TrendingUp, Users, FileText, BarChart3 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Upload, TrendingUp, Users, FileText, BarChart3, TestTube, Bug, Save, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import components
@@ -12,14 +14,23 @@ import { PatientSelector } from "@/components/PatientSelector";
 import { TrendChart } from "@/components/TrendChart";
 import { ComparisonView } from "@/components/ComparisonView";
 import { BloodReportExtractor } from "@/services/BloodReportExtractor";
+import { PatientDataService, PatientData } from "@/services/PatientDataService";
 import { ManualDataEntry } from "@/components/ManualDataEntry";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ParameterCard } from "@/components/ParameterCard";
+import { OCRTester } from "@/components/OCRTester";
+import { OCRDebugger } from "@/components/OCRDebugger";
+import { EnhancedTrendChart } from "@/components/EnhancedTrendChart";
+import { PatientDataViewer } from "@/components/PatientDataViewer";
+import { ManualEntryPrompt } from "@/components/ManualEntryPrompt";
 
 interface BloodParameter {
   value: number;
   unit: string;
   optimal: string;
+  status: 'normal' | 'high' | 'low' | 'critical';
+  healthInsight?: string;
+  recommendation?: string;
 }
 
 interface BloodReport {
@@ -50,11 +61,11 @@ const mockReports: BloodReport[] = [
     uploadDate: "2024-01-20",
     patientName: "John Smith",
     parameters: {
-      hemoglobin: { value: 13.2, unit: "g/dL", optimal: "12-15" },
-      wbc: { value: 7200, unit: "/μL", optimal: "4500-11000" },
-      platelets: { value: 250000, unit: "/μL", optimal: "150000-450000" },
-      glucose: { value: 92, unit: "mg/dL", optimal: "70-100" },
-      cholesterol: { value: 185, unit: "mg/dL", optimal: "<200" }
+      hemoglobin: { value: 13.2, unit: "g/dL", optimal: "12-15", status: "normal" },
+      wbc: { value: 7200, unit: "/μL", optimal: "4500-11000", status: "normal" },
+      platelets: { value: 250000, unit: "/μL", optimal: "150000-450000", status: "normal" },
+      glucose: { value: 92, unit: "mg/dL", optimal: "70-100", status: "normal" },
+      cholesterol: { value: 185, unit: "mg/dL", optimal: "<200", status: "normal" }
     }
   },
   {
@@ -64,11 +75,11 @@ const mockReports: BloodReport[] = [
     uploadDate: "2023-10-15",
     patientName: "John Smith",
     parameters: {
-      hemoglobin: { value: 12.8, unit: "g/dL", optimal: "12-15" },
-      wbc: { value: 6800, unit: "/μL", optimal: "4500-11000" },
-      platelets: { value: 240000, unit: "/μL", optimal: "150000-450000" },
-      glucose: { value: 88, unit: "mg/dL", optimal: "70-100" },
-      cholesterol: { value: 195, unit: "mg/dL", optimal: "<200" }
+      hemoglobin: { value: 12.8, unit: "g/dL", optimal: "12-15", status: "normal" },
+      wbc: { value: 6800, unit: "/μL", optimal: "4500-11000", status: "normal" },
+      platelets: { value: 240000, unit: "/μL", optimal: "150000-450000", status: "normal" },
+      glucose: { value: 88, unit: "mg/dL", optimal: "70-100", status: "normal" },
+      cholesterol: { value: 195, unit: "mg/dL", optimal: "<200", status: "normal" }
     }
   },
   {
@@ -78,27 +89,90 @@ const mockReports: BloodReport[] = [
     uploadDate: "2024-02-25",
     patientName: "Sarah Johnson",
     parameters: {
-      cholesterol: { value: 220, unit: "mg/dL", optimal: "<200" },
-      triglycerides: { value: 165, unit: "mg/dL", optimal: "<150" },
-      hdl: { value: 45, unit: "mg/dL", optimal: ">40" },
-      ldl: { value: 140, unit: "mg/dL", optimal: "<100" }
+      cholesterol: { value: 220, unit: "mg/dL", optimal: "<200", status: "high" },
+      triglycerides: { value: 165, unit: "mg/dL", optimal: "<150", status: "high" },
+      hdl: { value: 45, unit: "mg/dL", optimal: ">40", status: "normal" },
+      ldl: { value: 140, unit: "mg/dL", optimal: "<100", status: "high" }
     }
   }
 ];
 
 export const BloodReportDashboard = () => {
-  const [reports, setReports] = useState<BloodReport[]>(mockReports);
-  const [selectedPatient, setSelectedPatient] = useState<string>("John Smith");
+  const [selectedPatient, setSelectedPatient] = useState<string>("urmila-sharma");
   const [activeTab, setActiveTab] = useState("overview");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState<{
+    current: number;
+    total: number;
+    currentFile: string;
+  } | null>(null);
+  const [patientData, setPatientData] = useState<PatientData | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const { toast } = useToast();
 
-  const patientReports = reports.filter(report => report.patientName === selectedPatient);
-  const latestReport = patientReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-  const previousReport = patientReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[1];
+  // Load patient data on component mount
+  useEffect(() => {
+    const loadPatientData = async () => {
+      console.log('🔄 Loading patient data for:', selectedPatient);
+      const data = await PatientDataService.loadPatientData(selectedPatient);
+      console.log('📊 Loaded patient data:', data);
+      setPatientData(data);
+    };
+    loadPatientData();
+  }, [selectedPatient]);
+
+  // Get patient data from the loaded JSON data
+  const patientReports = patientData?.reports || [];
+  
+  console.log('📋 Raw patient reports:', patientReports);
+  console.log('📋 Patient data object:', patientData);
+  console.log('📋 Selected patient:', selectedPatient);
+  
+  // Convert ExtractedReport to BloodReport format for display
+  const convertToBloodReport = (extractedReport: any): BloodReport => {
+    const converted = {
+      id: extractedReport.id,
+      date: extractedReport.reportDate || extractedReport.date,
+      type: extractedReport.type,
+      uploadDate: extractedReport.uploadDate,
+      fileName: extractedReport.fileName,
+      patientName: extractedReport.patientName,
+      parameters: extractedReport.parameters
+    };
+    console.log('🔄 Converting report:', extractedReport, 'to:', converted);
+    return converted;
+  };
+  
+  const displayReports = patientReports.map(convertToBloodReport);
+  console.log('📊 Display reports:', displayReports);
+
+  // Check if a report requires manual entry
+  const requiresManualEntry = (report: any): boolean => {
+    return report.metadata?.requiresManualEntry === true;
+  };
+
+  // Get the failure reason for manual entry reports
+  const getFailureReason = (report: any): string => {
+    return report.metadata?.failureReason || 'Unknown processing error';
+  };
+  
+  const latestReport = displayReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  const previousReport = displayReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[1];
+  
+  console.log('📈 Latest report:', latestReport);
+  console.log('📉 Previous report:', previousReport);
 
   const handleFileUpload = async (files: File[]) => {
     console.log('🚨 DASHBOARD handleFileUpload CALLED! Files:', files);
-    alert('handleFileUpload called with ' + files.length + ' files'); // Temporary alert to verify
+    
+    setIsProcessing(true);
+    setProcessingProgress({
+      current: 0,
+      total: files.length,
+      currentFile: 'Starting...'
+    });
+    
     try {
       console.log('=== handleFileUpload called with files:', files);
       console.log('Number of files:', files.length);
@@ -112,9 +186,11 @@ export const BloodReportDashboard = () => {
         description: `Analyzing ${files.length} file(s). This may take a moment.`,
       });
 
-      // Process files using BloodReportExtractor
+      // Process files using BloodReportExtractor with progress updates
       console.log('=== Starting BloodReportExtractor.processFiles');
-      const extractedReports = await BloodReportExtractor.processFiles(files);
+      const extractedReports = await BloodReportExtractor.processFiles(files, (progress) => {
+        setProcessingProgress(progress);
+      });
       console.log('=== BloodReportExtractor completed. Results:', extractedReports);
       
       if (extractedReports.length === 0) {
@@ -127,33 +203,46 @@ export const BloodReportDashboard = () => {
         return;
       }
 
-      // Convert extracted reports to BloodReport format and add to state
-      const newReports: BloodReport[] = extractedReports.map(extracted => ({
-        id: extracted.id,
-        date: extracted.date,
-        type: extracted.type,
-        uploadDate: new Date().toISOString().split('T')[0],
-        fileName: extracted.fileName,
-        patientName: extracted.patientName,
-        parameters: extracted.parameters
-      }));
-
-      console.log('=== New reports to add:', newReports);
-
-      // Add new reports to existing reports
-      setReports(prevReports => {
-        console.log('=== Previous reports:', prevReports);
-        const updatedReports = [...prevReports, ...newReports];
-        console.log('=== Updated reports:', updatedReports);
-        return updatedReports;
-      });
-
-      // If this is a new patient, switch to them
-      const newPatients = [...new Set(newReports.map(r => r.patientName))];
-      if (newPatients.length > 0) {
-        console.log('=== New patients found:', newPatients);
-        setSelectedPatient(newPatients[0]);
+      // Automatically save to patient data JSON
+      console.log('💾 Saving reports to patient data...');
+      console.log('💾 Selected patient:', selectedPatient);
+      console.log('💾 Reports to save:', extractedReports);
+      
+      for (const report of extractedReports) {
+        console.log('💾 Saving report:', report);
+        const saveResult = await PatientDataService.addReport(selectedPatient, report);
+        console.log('💾 Save result:', saveResult);
       }
+
+      // Reload patient data to get updated information
+      console.log('🔄 Reloading patient data...');
+      const updatedData = await PatientDataService.loadPatientData(selectedPatient);
+      console.log('📊 Updated patient data:', updatedData);
+      console.log('📊 Number of reports after save:', updatedData?.reports?.length || 0);
+      
+      if (updatedData) {
+        setPatientData(updatedData);
+        console.log('✅ Patient data updated in state');
+        
+        // Force a re-render by updating a timestamp
+        setActiveTab(activeTab); // This will trigger a re-render
+        
+        // Show success message with report count
+        toast({
+          title: "Data Updated!",
+          description: `Patient data now has ${updatedData.reports.length} reports. Check the Overview tab.`,
+        });
+      } else {
+        console.error('❌ Failed to load updated patient data');
+        toast({
+          title: "Data Update Failed",
+          description: "Could not reload patient data after saving report.",
+          variant: "destructive"
+        });
+      }
+
+      // Keep the current patient (Urmila Sharma) - don't switch patients
+      console.log('=== Upload completed for patient:', selectedPatient);
 
       // Switch to overview tab to show results
       setActiveTab("overview");
@@ -161,7 +250,7 @@ export const BloodReportDashboard = () => {
       // Success toast
       toast({
         title: "Upload successful!",
-        description: `Successfully processed ${extractedReports.length} out of ${files.length} files. ${newPatients.join(', ')} added to your records.`,
+        description: `Successfully processed ${extractedReports.length} out of ${files.length} files for ${selectedPatient}.`,
       });
 
       console.log('=== Upload process completed successfully');
@@ -173,6 +262,75 @@ export const BloodReportDashboard = () => {
         description: "An error occurred while processing your files. Please try again or check the file format.",
         variant: "destructive"
       });
+    } finally {
+      setIsProcessing(false);
+      setProcessingProgress(null);
+    }
+  };
+
+  const handleSaveData = async () => {
+    try {
+      setIsSaving(true);
+      console.log('💾 Saving data to file...');
+      
+      const success = await PatientDataService.saveCurrentDataToFile(selectedPatient);
+      
+      if (success) {
+        toast({
+          title: "Data saved successfully!",
+          description: "Your patient data has been saved. Check your Downloads folder for the JSON file.",
+        });
+      } else {
+        toast({
+          title: "Save failed",
+          description: "Failed to save data. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error saving data:', error);
+      toast({
+        title: "Save failed",
+        description: "An error occurred while saving your data.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearData = async () => {
+    try {
+      setIsClearing(true);
+      console.log('🗑️ Clearing all data...');
+      
+      const success = await PatientDataService.clearPatientData(selectedPatient);
+      
+      if (success) {
+        // Reload patient data to get the original data from JSON file
+        const updatedData = await PatientDataService.loadPatientData(selectedPatient);
+        setPatientData(updatedData);
+        
+        toast({
+          title: "Data cleared successfully!",
+          description: "All reports including sample data have been removed. Patient record is now clean.",
+        });
+      } else {
+        toast({
+          title: "Clear failed",
+          description: "Failed to clear data. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error clearing data:', error);
+      toast({
+        title: "Clear failed",
+        description: "An error occurred while clearing your data.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -231,6 +389,38 @@ export const BloodReportDashboard = () => {
 
   return (
     <div className="min-h-screen bg-background p-6">
+      {/* Processing Overlay */}
+      {isProcessing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-96">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                Processing Files...
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {processingProgress && (
+                <>
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Processing {processingProgress.current} of {processingProgress.total} files
+                    </p>
+                    <p className="text-sm font-medium mt-1">
+                      {processingProgress.currentFile}
+                    </p>
+                  </div>
+                  <Progress value={(processingProgress.current / processingProgress.total) * 100} />
+                  <p className="text-xs text-muted-foreground text-center">
+                    This may take a few minutes for large files or multiple reports
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
@@ -247,43 +437,100 @@ export const BloodReportDashboard = () => {
               <Upload size={20} />
               Upload Reports
             </Button>
-            <Badge variant="secondary" className="px-3 py-1">
-              {reports.length} Reports
+            <Button 
+              variant="default" 
+              className="gap-2"
+              onClick={handleSaveData}
+              disabled={isSaving || !patientData}
+            >
+              <Save size={20} />
+              {isSaving ? "Saving..." : "Save Data"}
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  className="gap-2"
+                  disabled={isClearing || !patientData}
+                >
+                  <Trash2 size={20} />
+                  {isClearing ? "Clearing..." : "Clear Data"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear All Data</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to clear all data for {selectedPatient}? 
+                    This action will remove all reports including sample data, leaving you with a completely clean patient record. 
+                    This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleClearData}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Clear All Data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Badge 
+              variant="secondary" 
+              className="px-3 py-1 cursor-pointer hover:bg-secondary/80 transition-colors"
+              onClick={() => setActiveTab("data")}
+            >
+              {displayReports.length} Reports
             </Badge>
           </div>
         </div>
 
         {/* Patient Selector */}
         <PatientSelector
-          reports={reports}
+          reports={displayReports}
           selectedPatient={selectedPatient}
           onPatientChange={setSelectedPatient}
+          usePatientHistory={false}
         />
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="overview" className="gap-2">
-              <BarChart3 size={16} />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="trends" className="gap-2">
-              <TrendingUp size={16} />
-              Trends
-            </TabsTrigger>
-            <TabsTrigger value="comparison" className="gap-2">
-              <FileText size={16} />
-              Compare
-            </TabsTrigger>
-            <TabsTrigger value="suggestions" className="gap-2">
-              <Users size={16} />
-              Insights
-            </TabsTrigger>
-            <TabsTrigger value="upload" className="gap-2">
-              <Upload size={16} />
-              Upload
-            </TabsTrigger>
-          </TabsList>
+                  <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="overview" className="gap-2">
+            <BarChart3 size={16} />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="trends" className="gap-2">
+            <TrendingUp size={16} />
+            Trends
+          </TabsTrigger>
+          <TabsTrigger value="comparison" className="gap-2">
+            <FileText size={16} />
+            Compare
+          </TabsTrigger>
+          <TabsTrigger value="suggestions" className="gap-2">
+            <Users size={16} />
+            Insights
+          </TabsTrigger>
+          <TabsTrigger value="upload" className="gap-2">
+            <Upload size={16} />
+            Upload
+          </TabsTrigger>
+          <TabsTrigger value="ocr-test" className="gap-2">
+            <TestTube size={16} />
+            OCR Test
+          </TabsTrigger>
+          <TabsTrigger value="ocr-debug" className="gap-2">
+            <Bug size={16} />
+            OCR Debug
+          </TabsTrigger>
+          <TabsTrigger value="data" className="gap-2">
+            <FileText size={16} />
+            Data
+          </TabsTrigger>
+        </TabsList>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
@@ -296,7 +543,7 @@ export const BloodReportDashboard = () => {
                       <Badge variant="outline">{latestReport.date}</Badge>
                     </CardTitle>
                     <CardDescription>
-                      {latestReport.type} • Uploaded {latestReport.uploadDate}
+                      {latestReport.type} • Report Date: {latestReport.date}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -313,15 +560,28 @@ export const BloodReportDashboard = () => {
                             value={param.value}
                             unit={param.unit}
                             optimal={param.optimal}
-                            status={status}
+                            status={param.status}
                             trend={trend}
                             previousValue={previousParam?.value}
+                            healthInsight={param.healthInsight}
+                            recommendation={param.recommendation}
                           />
                         );
                       })}
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Manual Entry Prompts */}
+                {displayReports.filter(requiresManualEntry).map((report) => (
+                  <ManualEntryPrompt
+                    key={report.id}
+                    fileName={report.fileName || 'Unknown file'}
+                    failureReason={getFailureReason(report)}
+                    onManualEntry={() => setActiveTab('manual')}
+                    onRetryUpload={() => setActiveTab('upload')}
+                  />
+                ))}
 
                 {/* Quick Insights */}
                 {criticalChanges.length > 0 && (
@@ -365,17 +625,7 @@ export const BloodReportDashboard = () => {
 
           {/* Trends Tab */}
           <TabsContent value="trends" className="space-y-6">
-            {patientReports.length > 1 ? (
-              <TrendChart reports={patientReports} />
-            ) : (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <p className="text-muted-foreground">
-                    Need at least 2 reports to show trends. Upload more reports to see parameter changes over time.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            <EnhancedTrendChart patientName={selectedPatient} />
           </TabsContent>
 
           {/* Comparison Tab */}
@@ -417,10 +667,23 @@ export const BloodReportDashboard = () => {
             <FileUpload onUpload={handleFileUpload} />
             
             {/* Manual Data Entry */}
-            <ManualDataEntry onReportCreated={(report) => {
+            <ManualDataEntry onReportCreated={async (report) => {
               console.log('📝 Manual report created:', report);
-              const newReports = [...reports, { ...report, uploadDate: new Date().toISOString().split('T')[0] }];
-              setReports(newReports);
+              // Convert to ExtractedReport format and save to patient data
+              const extractedReport = {
+                id: report.id,
+                date: report.date,
+                reportDate: report.date,
+                uploadDate: new Date().toISOString().split('T')[0],
+                type: report.type,
+                fileName: 'manual-entry',
+                patientName: report.patientName,
+                parameters: report.parameters
+              };
+              
+              await PatientDataService.addReport(selectedPatient, extractedReport);
+              const updatedData = await PatientDataService.loadPatientData(selectedPatient);
+              setPatientData(updatedData);
               setSelectedPatient(report.patientName);
             }} />
             
@@ -452,6 +715,26 @@ export const BloodReportDashboard = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* OCR Test Tab */}
+          <TabsContent value="ocr-test" className="space-y-6">
+            <OCRTester />
+          </TabsContent>
+
+          {/* OCR Debug Tab */}
+          <TabsContent value="ocr-debug" className="space-y-6">
+            <OCRDebugger />
+          </TabsContent>
+
+          {/* Data Tab */}
+          <TabsContent value="data" className="space-y-6">
+            <PatientDataViewer 
+              patientId={selectedPatient}
+              onDataUpdate={(updatedData) => {
+                setPatientData(updatedData);
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>

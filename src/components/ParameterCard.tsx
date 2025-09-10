@@ -7,9 +7,11 @@ interface ParameterCardProps {
   value: number;
   unit: string;
   optimal: string;
-  status: "normal" | "high" | "low";
+  status: "normal" | "high" | "low" | "critical";
   trend?: "up" | "down" | "stable";
   previousValue?: number;
+  healthInsight?: string;
+  recommendation?: string;
 }
 
 export const ParameterCard = ({ 
@@ -19,13 +21,16 @@ export const ParameterCard = ({
   optimal, 
   status, 
   trend, 
-  previousValue 
+  previousValue,
+  healthInsight,
+  recommendation
 }: ParameterCardProps) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "normal": return "bg-success/10 text-success border-success/20";
       case "high": return "bg-destructive/10 text-destructive border-destructive/20";
       case "low": return "bg-warning/10 text-warning border-warning/20";
+      case "critical": return "bg-red-500/10 text-red-600 border-red-500/20";
       default: return "bg-muted/10 text-muted-foreground border-muted/20";
     }
   };
@@ -35,6 +40,7 @@ export const ParameterCard = ({
       case "normal": return "secondary";
       case "high": return "destructive";
       case "low": return "default";
+      case "critical": return "destructive";
       default: return "secondary";
     }
   };
@@ -103,6 +109,21 @@ export const ParameterCard = ({
               }`}>
                 {changePercentage > 0 ? "+" : ""}{changePercentage.toFixed(1)}%
               </span>
+            )}
+          </div>
+        )}
+
+        {status !== "normal" && healthInsight && (
+          <div className="pt-2 border-t space-y-2">
+            <div className="text-xs">
+              <span className="font-medium text-destructive">Health Insight:</span>
+              <p className="text-muted-foreground mt-1">{healthInsight}</p>
+            </div>
+            {recommendation && (
+              <div className="text-xs">
+                <span className="font-medium text-blue-600">Recommendation:</span>
+                <p className="text-muted-foreground mt-1">{recommendation}</p>
+              </div>
             )}
           </div>
         )}

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { User, Users } from "lucide-react";
+import { PatientHistoryService } from "@/services/PatientHistoryService";
 
 interface BloodReport {
   id: number | string;
@@ -17,30 +18,51 @@ interface PatientSelectorProps {
   reports: BloodReport[];
   selectedPatient: string | null;
   onPatientChange: (patientName: string) => void;
+  usePatientHistory?: boolean;
 }
 
-export const PatientSelector = ({ reports, selectedPatient, onPatientChange }: PatientSelectorProps) => {
+export const PatientSelector = ({ reports, selectedPatient, onPatientChange, usePatientHistory = false }: PatientSelectorProps) => {
   console.log('PatientSelector rendering with:', { reports, selectedPatient });
   
   // Get unique patients and their report counts
-  const patientStats = reports.reduce((acc, report) => {
-    const patientName = report.patientName;
-    if (!acc[patientName]) {
-      acc[patientName] = {
-        name: patientName,
-        reportCount: 0,
-        latestDate: report.date
-      };
-    }
-    acc[patientName].reportCount++;
+  let patientStats: Record<string, { name: string; reportCount: number; latestDate: string }> = {};
+  
+  if (usePatientHistory) {
+    // Use patient history service
+    const allPatients = PatientHistoryService.getAllPatients();
     
-    // Update latest date if this report is more recent
-    if (new Date(report.date) > new Date(acc[patientName].latestDate)) {
-      acc[patientName].latestDate = report.date;
-    }
-    
-    return acc;
-  }, {} as Record<string, { name: string; reportCount: number; latestDate: string }>);
+    allPatients.forEach(patientName => {
+      const history = PatientHistoryService.getPatientHistory(patientName);
+      if (history) {
+        patientStats[patientName] = {
+          name: patientName,
+          reportCount: history.reports.length,
+          latestDate: history.reports.length > 0 ? 
+            history.reports[history.reports.length - 1].date : new Date().toISOString().split('T')[0]
+        };
+      }
+    });
+  } else {
+    // Use local reports
+    patientStats = reports.reduce((acc, report) => {
+      const patientName = report.patientName;
+      if (!acc[patientName]) {
+        acc[patientName] = {
+          name: patientName,
+          reportCount: 0,
+          latestDate: report.date
+        };
+      }
+      acc[patientName].reportCount++;
+      
+      // Update latest date if this report is more recent
+      if (new Date(report.date) > new Date(acc[patientName].latestDate)) {
+        acc[patientName].latestDate = report.date;
+      }
+      
+      return acc;
+    }, {} as Record<string, { name: string; reportCount: number; latestDate: string }>);
+  }
 
   const patients = Object.values(patientStats).sort((a, b) => 
     new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime()
